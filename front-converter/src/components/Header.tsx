@@ -1,7 +1,8 @@
-import React from 'react';
-import '../styles/Header.css';
+'use client';
 
-const Header: React.FC = () => {
+import Link from 'next/link';
+
+export default function Header() {
   return (
     <header className="beat-header">
       <div className="header-container">
@@ -10,10 +11,10 @@ const Header: React.FC = () => {
         </div>
         
         <nav className="nav-menu">
-          <a href="#convertidor" className="nav-link">CONVERTIDOR</a>
-          <a href="#caracteristicas" className="nav-link">CARACTERÍSTICAS</a>
-          <a href="#api" className="nav-link">API</a>
-          <a href="#soporte" className="nav-link">SOPORTE</a>
+          <Link href="#convertidor" className="nav-link">CONVERTIDOR</Link>
+          <Link href="#caracteristicas" className="nav-link">CARACTERÍSTICAS</Link>
+          <Link href="#api" className="nav-link">API</Link>
+          <Link href="#soporte" className="nav-link">SOPORTE</Link>
         </nav>
 
         <div className="header-status">
@@ -23,6 +24,4 @@ const Header: React.FC = () => {
       </div>
     </header>
   );
-};
-
-export default Header;
+}
