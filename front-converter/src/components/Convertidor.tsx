@@ -1,3 +1,9 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import Swal from "sweetalert2";
+import { validateYoutubeUrl } from "@/services/api";
+
 type RailIconType = "headphones" | "music" | "mic" | "signature" | "speaker";
 
 function RailIcon({ type }: { type: RailIconType }) {
@@ -64,6 +70,28 @@ function RailIcon({ type }: { type: RailIconType }) {
 }
 
 export default function Convertidor() {
+  const [sourceUrl, setSourceUrl] = useState("");
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const validation = validateYoutubeUrl(sourceUrl);
+
+    if (!validation.valid) {
+      await Swal.fire({
+        icon: "error",
+        title: "URL no válida",
+        text: validation.message ?? "Ingresa una URL válida de YouTube para continuar.",
+        confirmButtonText: "Entendido",
+        confirmButtonColor: "#ff0051",
+        background: "#0e0e0e",
+        color: "#f5f5f5",
+      });
+      return;
+    }
+
+    setSourceUrl(validation.normalizedUrl ?? sourceUrl.trim());
+  };
+
   return (
     <section id="convertidor" className="converter-screen">
       <aside className="side-rail side-rail-left" aria-hidden="true">
@@ -89,21 +117,23 @@ export default function Convertidor() {
           frecuencias de YouTube a flujos puros de MP3 con precisión cinética.
         </p>
 
-        <div className="converter-panel">
+        <form className="converter-panel" onSubmit={handleSubmit} noValidate>
           <label htmlFor="url" className="input-label">
             PAYLOAD DE ORIGEN DE LA URL
           </label>
 
           <input
             id="url"
-            type="text"
+            type="url"
             className="url-field"
-            placeholder="URL DEL PAYLOAD DE ORIGEN..."
-            readOnly
+            placeholder="https://www.youtube.com/watch?v=..."
             aria-label="URL de origen"
+            value={sourceUrl}
+            onChange={(event) => setSourceUrl(event.target.value)}
+            autoComplete="off"
           />
 
-          <button type="button" className="start-button">
+          <button type="submit" className="start-button">
             INICIAR CONVERSIÓN
           </button>
 
@@ -113,7 +143,7 @@ export default function Convertidor() {
               LISTO <em>■</em>
             </span>
           </div>
-        </div>
+        </form>
       </div>
 
       <aside className="side-rail side-rail-right" aria-hidden="true">
