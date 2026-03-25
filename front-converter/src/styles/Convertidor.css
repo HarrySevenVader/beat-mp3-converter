@@ -151,6 +151,67 @@
   color: #ff859e;
 }
 
+.download-ready-panel {
+  margin-top: 30px;
+  width: min(100%, 680px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(14, 14, 14, 0.92), rgba(8, 8, 8, 0.96));
+  min-height: 250px;
+  padding: 30px 26px 24px;
+  text-align: left;
+  box-shadow: 0 0 0 1px rgba(255, 0, 51, 0.08), 0 20px 48px rgba(0, 0, 0, 0.45);
+}
+
+.download-ready-label {
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: rgba(255, 112, 144, 0.88);
+  font-weight: 600;
+}
+
+.download-ready-url {
+  margin-top: 14px;
+  width: 100%;
+  background: #050507;
+  color: rgba(255, 255, 255, 0.88);
+  min-height: 40px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.download-ready-actions {
+  margin-top: 18px;
+}
+
+.edit-url-button {
+  margin-top: 12px;
+  width: 100%;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.edit-url-button:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+}
+
+.start-button:disabled,
+.edit-url-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .side-rail {
   position: absolute;
   top: 50%;
@@ -211,6 +272,12 @@
     padding: 28px 20px 18px;
   }
 
+  .download-ready-panel {
+    width: min(100%, 620px);
+    min-height: 236px;
+    padding: 28px 20px 18px;
+  }
+
   .url-field {
     height: 40px;
     font-size: 14px;
@@ -257,6 +324,13 @@
   }
 
   .converter-panel {
+    margin-top: 26px;
+    width: min(100%, 580px);
+    min-height: 220px;
+    padding: 26px 16px 16px;
+  }
+
+  .download-ready-panel {
     margin-top: 26px;
     width: min(100%, 580px);
     min-height: 220px;

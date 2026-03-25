@@ -2,7 +2,8 @@
 
 import { FormEvent, useState } from "react";
 import Swal from "sweetalert2";
-import { validateYoutubeUrl } from "@/services/api";
+import DownloadReady from "@/components/DownloadReady";
+import { ApiClientError, downloadConvertedMp3, validateYoutubeUrl } from "@/services/api";
 
 type RailIconType = "headphones" | "music" | "mic" | "signature" | "speaker";
 
@@ -71,6 +72,8 @@ function RailIcon({ type }: { type: RailIconType }) {
 
 export default function Convertidor() {
   const [sourceUrl, setSourceUrl] = useState("");
+  const [verifiedUrl, setVerifiedUrl] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -89,7 +92,50 @@ export default function Convertidor() {
       return;
     }
 
-    setSourceUrl(validation.normalizedUrl ?? sourceUrl.trim());
+    const normalizedUrl = validation.normalizedUrl ?? sourceUrl.trim();
+    setSourceUrl(normalizedUrl);
+    setVerifiedUrl(normalizedUrl);
+  };
+
+  const handleDownload = async () => {
+    if (!verifiedUrl) {
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      await downloadConvertedMp3(verifiedUrl, 192);
+      await Swal.fire({
+        icon: "success",
+        title: "Descarga iniciada",
+        text: "Tu archivo MP3 está siendo descargado.",
+        confirmButtonText: "Perfecto",
+        confirmButtonColor: "#ff0051",
+        background: "#0e0e0e",
+        color: "#f5f5f5",
+      });
+    } catch (error) {
+      const message =
+        error instanceof ApiClientError
+          ? error.message
+          : "No se pudo descargar el MP3 en este momento.";
+
+      await Swal.fire({
+        icon: "error",
+        title: "Error de conversión",
+        text: message,
+        confirmButtonText: "Entendido",
+        confirmButtonColor: "#ff0051",
+        background: "#0e0e0e",
+        color: "#f5f5f5",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleEditUrl = () => {
+    setVerifiedUrl(null);
   };
 
   return (
@@ -117,33 +163,42 @@ export default function Convertidor() {
           frecuencias de YouTube a flujos puros de MP3 con precisión cinética.
         </p>
 
-        <form className="converter-panel" onSubmit={handleSubmit} noValidate>
-          <label htmlFor="url" className="input-label">
-            PAYLOAD DE ORIGEN DE LA URL
-          </label>
+        {!verifiedUrl ? (
+          <form className="converter-panel" onSubmit={handleSubmit} noValidate>
+            <label htmlFor="url" className="input-label">
+              PAYLOAD DE ORIGEN DE LA URL
+            </label>
 
-          <input
-            id="url"
-            type="url"
-            className="url-field"
-            placeholder="https://www.youtube.com/watch?v=..."
-            aria-label="URL de origen"
-            value={sourceUrl}
-            onChange={(event) => setSourceUrl(event.target.value)}
-            autoComplete="off"
+            <input
+              id="url"
+              type="url"
+              className="url-field"
+              placeholder="https://www.youtube.com/watch?v=..."
+              aria-label="URL de origen"
+              value={sourceUrl}
+              onChange={(event) => setSourceUrl(event.target.value)}
+              autoComplete="off"
+            />
+
+            <button type="submit" className="start-button">
+              INICIAR CONVERSIÓN
+            </button>
+
+            <div className="panel-footer">
+              <span>◉ 320 KBPS &nbsp;&nbsp; 🔒 ENCRIPTADO</span>
+              <span>
+                LISTO <em>■</em>
+              </span>
+            </div>
+          </form>
+        ) : (
+          <DownloadReady
+            sourceUrl={verifiedUrl}
+            isLoading={isDownloading}
+            onDownload={handleDownload}
+            onEditUrl={handleEditUrl}
           />
-
-          <button type="submit" className="start-button">
-            INICIAR CONVERSIÓN
-          </button>
-
-          <div className="panel-footer">
-            <span>◉ 320 KBPS &nbsp;&nbsp; 🔒 ENCRIPTADO</span>
-            <span>
-              LISTO <em>■</em>
-            </span>
-          </div>
-        </form>
+        )}
       </div>
 
       <aside className="side-rail side-rail-right" aria-hidden="true">
