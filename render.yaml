@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: beat-mp3-back
+    env: python
+    rootDir: back-converter
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/system/health
+    envVars:
+      - key: BACKEND_APP_NAME
+        value: Beat MP3 Converter API
+      - key: BACKEND_CORS_ALLOW_CREDENTIALS
+        value: true
+      - key: BACKEND_CORS_ORIGINS_PROD
+        value: https://tu-frontend.vercel.app
+      - key: BACKEND_JOBS_DB_PATH_PROD
+        value: downloads/jobs.db
+      - key: BACKEND_WORKER_MAX_WORKERS_PROD
+        value: 2

@@ -40,6 +40,7 @@ def read_metrics():
 def read_health():
     return {
         "status": "ok",
+        "mode": settings.runtime_mode,
         "service": settings.app_name,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }
