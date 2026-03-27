@@ -23,8 +23,8 @@ class Settings:
 
 
 def _resolve_runtime_mode() -> str:
-    FORCE_RUNTIME_MODE = None
-    # FORCE_RUNTIME_MODE = "prod"
+    FORCE_RUNTIME_MODE = "prod"
+    # FORCE_RUNTIME_MODE = None
     mode = (FORCE_RUNTIME_MODE or os.getenv("BACKEND_RUNTIME_MODE", "dev")).lower()
     return "prod" if mode == "prod" else "dev"
 

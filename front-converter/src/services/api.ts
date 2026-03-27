@@ -14,8 +14,8 @@ const YOUTUBE_HOSTS = [
 ];
 
 const API_BASE_URL =
-	// (process.env.NEXT_PUBLIC_API_BASE_URL_PROD ?? "https://tu-backend-prod.onrender.com") ||
-	process.env.NEXT_PUBLIC_API_BASE_URL_DEV ||
+	(process.env.NEXT_PUBLIC_API_BASE_URL_PROD ?? "https://tu-backend-prod.onrender.com") ||
+	// process.env.NEXT_PUBLIC_API_BASE_URL_DEV ||
 	"http://127.0.0.1:8080";
 
 export type ValidationResult = {
