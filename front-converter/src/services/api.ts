@@ -1,3 +1,9 @@
+import {
+	ConversionJobCreation,
+	ConversionJobStatus,
+	VerifiedVideo,
+} from "@/types";
+
 const YOUTUBE_HOSTS = [
 	"youtube.com",
 	"www.youtube.com",
@@ -78,6 +84,15 @@ export function validateYoutubeUrl(value: string): ValidationResult {
 	};
 }
 
+async function readErrorDetail(response: Response): Promise<unknown> {
+	try {
+		const payload = (await response.json()) as { detail?: unknown };
+		return payload.detail ?? null;
+	} catch {
+		return null;
+	}
+}
+
 function parseApiError(status: number, detail: unknown): ApiClientError {
 	if (typeof detail === "object" && detail !== null) {
 		const parsed = detail as ApiErrorDetail;
@@ -115,6 +130,88 @@ function extractFileName(contentDisposition: string): string | null {
 	return null;
 }
 
+async function triggerFileDownload(response: Response, fallbackFileName: string): Promise<void> {
+	const blob = await response.blob();
+	const contentDisposition = response.headers.get("content-disposition") ?? "";
+	const fileName = extractFileName(contentDisposition) ?? fallbackFileName;
+
+	const blobUrl = window.URL.createObjectURL(blob);
+	const anchor = document.createElement("a");
+	anchor.href = blobUrl;
+	anchor.download = fileName;
+	document.body.append(anchor);
+	anchor.click();
+	anchor.remove();
+	window.URL.revokeObjectURL(blobUrl);
+}
+
+export async function verifyYoutubeVideo(sourceUrl: string): Promise<VerifiedVideo> {
+	const response = await fetch(`${API_BASE_URL}/api/convert/verify`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			source_url: sourceUrl,
+		}),
+	});
+
+	if (!response.ok) {
+		throw parseApiError(response.status, await readErrorDetail(response));
+	}
+
+	return (await response.json()) as VerifiedVideo;
+}
+
+export async function createConversionJob(
+	sourceUrl: string,
+	audioQuality = 192,
+): Promise<ConversionJobCreation> {
+	const response = await fetch(`${API_BASE_URL}/api/convert/jobs`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			source_url: sourceUrl,
+			audio_quality: audioQuality,
+		}),
+	});
+
+	if (!response.ok) {
+		throw parseApiError(response.status, await readErrorDetail(response));
+	}
+
+	return (await response.json()) as ConversionJobCreation;
+}
+
+export async function getConversionJobStatus(jobId: string): Promise<ConversionJobStatus> {
+	const response = await fetch(`${API_BASE_URL}/api/convert/jobs/${jobId}/status`, {
+		method: "GET",
+		headers: {
+			"Content-Type": "application/json",
+		},
+	});
+
+	if (!response.ok) {
+		throw parseApiError(response.status, await readErrorDetail(response));
+	}
+
+	return (await response.json()) as ConversionJobStatus;
+}
+
+export async function downloadConversionJob(jobId: string): Promise<void> {
+	const response = await fetch(`${API_BASE_URL}/api/convert/jobs/${jobId}/download`, {
+		method: "GET",
+	});
+
+	if (!response.ok) {
+		throw parseApiError(response.status, await readErrorDetail(response));
+	}
+
+	await triggerFileDownload(response, "audio-convertido.mp3");
+}
+
 export async function downloadConvertedMp3(sourceUrl: string, audioQuality = 192): Promise<void> {
 	const response = await fetch(`${API_BASE_URL}/api/convert/download`, {
 		method: "POST",
@@ -128,27 +225,8 @@ export async function downloadConvertedMp3(sourceUrl: string, audioQuality = 192
 	});
 
 	if (!response.ok) {
-		let detail: unknown = null;
-		try {
-			const payload = (await response.json()) as { detail?: unknown };
-			detail = payload.detail;
-		} catch {
-			detail = null;
-		}
-
-		throw parseApiError(response.status, detail);
+		throw parseApiError(response.status, await readErrorDetail(response));
 	}
 
-	const blob = await response.blob();
-	const contentDisposition = response.headers.get("content-disposition") ?? "";
-	const fileName = extractFileName(contentDisposition) ?? "audio-convertido.mp3";
-
-	const blobUrl = window.URL.createObjectURL(blob);
-	const anchor = document.createElement("a");
-	anchor.href = blobUrl;
-	anchor.download = fileName;
-	document.body.append(anchor);
-	anchor.click();
-	anchor.remove();
-	window.URL.revokeObjectURL(blobUrl);
+	await triggerFileDownload(response, "audio-convertido.mp3");
 }

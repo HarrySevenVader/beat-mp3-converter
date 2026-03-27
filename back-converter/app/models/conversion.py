@@ -61,3 +61,11 @@ class ConversionResult(BaseModel):
     file_size_bytes: int
     duration_seconds: int | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class VideoMetadata(BaseModel):
+    source_url: HttpUrl
+    video_id: str
+    title: str
+    duration_seconds: int | None = None
+    thumbnail_url: str | None = None

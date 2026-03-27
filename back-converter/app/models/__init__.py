@@ -1,4 +1,4 @@
-from .conversion import ConversionRequest, ConversionResult
+from .conversion import ConversionRequest, ConversionResult, VideoMetadata
 from .exceptions import (
     AudioExtractionError,
     ConversionError,
@@ -13,6 +13,7 @@ __all__ = [
     "ConvertedFileNotFoundError",
     "ConversionRequest",
     "ConversionResult",
+    "VideoMetadata",
     "DownloadProcessError",
     "InvalidSourceUrlError",
 ]

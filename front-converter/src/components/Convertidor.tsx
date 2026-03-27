@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent } from "react";
 import Swal from "sweetalert2";
 import DownloadReady from "@/components/DownloadReady";
-import { ApiClientError, downloadConvertedMp3, validateYoutubeUrl } from "@/services/api";
+import { ApiClientError } from "@/services/api";
+import { useConvert } from "@/hooks/useConvert";
 
 type RailIconType = "headphones" | "music" | "mic" | "signature" | "speaker";
 
@@ -71,40 +72,67 @@ function RailIcon({ type }: { type: RailIconType }) {
 }
 
 export default function Convertidor() {
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [verifiedUrl, setVerifiedUrl] = useState<string | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const {
+    sourceUrl,
+    verifiedVideo,
+    panelState,
+    selectedBitrate,
+    jobStatus,
+    isBusy,
+    setSourceUrl,
+    verifySourceUrl,
+    pickAndConvert,
+    downloadReadyFile,
+    resetVerification,
+  } = useConvert();
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const validation = validateYoutubeUrl(sourceUrl);
 
-    if (!validation.valid) {
+    try {
+      await verifySourceUrl();
+    } catch (error) {
+      const message =
+        error instanceof ApiClientError
+          ? error.message
+          : "Ingresa una URL válida de YouTube para continuar.";
+
       await Swal.fire({
         icon: "error",
         title: "URL no válida",
-        text: validation.message ?? "Ingresa una URL válida de YouTube para continuar.",
+        text: message,
         confirmButtonText: "Entendido",
         confirmButtonColor: "#ff0051",
         background: "#0e0e0e",
         color: "#f5f5f5",
       });
-      return;
     }
+  };
 
-    const normalizedUrl = validation.normalizedUrl ?? sourceUrl.trim();
-    setSourceUrl(normalizedUrl);
-    setVerifiedUrl(normalizedUrl);
+  const handlePickAndConvert = async (bitrate: number) => {
+    try {
+      await pickAndConvert(bitrate);
+    } catch (error) {
+      const message =
+        error instanceof ApiClientError
+          ? error.message
+          : "No se pudo completar la conversión del MP3.";
+
+      await Swal.fire({
+        icon: "error",
+        title: "Error de conversión",
+        text: message,
+        confirmButtonText: "Entendido",
+        confirmButtonColor: "#ff0051",
+        background: "#0e0e0e",
+        color: "#f5f5f5",
+      });
+    }
   };
 
   const handleDownload = async () => {
-    if (!verifiedUrl) {
-      return;
-    }
-
-    setIsDownloading(true);
     try {
-      await downloadConvertedMp3(verifiedUrl, 192);
+      await downloadReadyFile();
       await Swal.fire({
         icon: "success",
         title: "Descarga iniciada",
@@ -122,20 +150,18 @@ export default function Convertidor() {
 
       await Swal.fire({
         icon: "error",
-        title: "Error de conversión",
+        title: "Error de descarga",
         text: message,
         confirmButtonText: "Entendido",
         confirmButtonColor: "#ff0051",
         background: "#0e0e0e",
         color: "#f5f5f5",
       });
-    } finally {
-      setIsDownloading(false);
     }
   };
 
   const handleEditUrl = () => {
-    setVerifiedUrl(null);
+    resetVerification();
   };
 
   return (
@@ -163,7 +189,7 @@ export default function Convertidor() {
           frecuencias de YouTube a flujos puros de MP3 con precisión cinética.
         </p>
 
-        {!verifiedUrl ? (
+        {!verifiedVideo ? (
           <form className="converter-panel" onSubmit={handleSubmit} noValidate>
             <label htmlFor="url" className="input-label">
               PAYLOAD DE ORIGEN DE LA URL
@@ -178,11 +204,22 @@ export default function Convertidor() {
               value={sourceUrl}
               onChange={(event) => setSourceUrl(event.target.value)}
               autoComplete="off"
+              disabled={isBusy}
             />
 
-            <button type="submit" className="start-button">
-              INICIAR CONVERSIÓN
+            <button type="submit" className="start-button" disabled={isBusy}>
+              {panelState === "verifying" ? "VERIFICANDO HOST..." : "INICIAR CONVERSIÓN"}
             </button>
+
+            {panelState === "verifying" ? (
+              <div className="conversion-status conversion-status-inline" aria-live="polite">
+                <span className="panel-spinner" aria-hidden="true" />
+                <div>
+                  <p>Verificando video en el servidor</p>
+                  <strong>Comprobando URL y host</strong>
+                </div>
+              </div>
+            ) : null}
 
             <div className="panel-footer">
               <span>◉ 320 KBPS &nbsp;&nbsp; 🔒 ENCRIPTADO</span>
@@ -193,8 +230,12 @@ export default function Convertidor() {
           </form>
         ) : (
           <DownloadReady
-            sourceUrl={verifiedUrl}
-            isLoading={isDownloading}
+            video={verifiedVideo}
+            selectedBitrate={selectedBitrate}
+            panelState={panelState === "ready" ? "ready" : panelState === "converting" ? "converting" : "verified"}
+            status={jobStatus}
+            isBusy={isBusy}
+            onPickAndConvert={handlePickAndConvert}
             onDownload={handleDownload}
             onEditUrl={handleEditUrl}
           />

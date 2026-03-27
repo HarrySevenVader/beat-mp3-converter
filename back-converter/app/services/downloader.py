@@ -3,6 +3,7 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 from shutil import which
+from typing import Any, Callable
 
 from pydantic import ValidationError
 from yt_dlp import YoutubeDL
@@ -15,20 +16,73 @@ from app.models import (
 	ConvertedFileNotFoundError,
 	DownloadProcessError,
 	InvalidSourceUrlError,
+	VideoMetadata,
 )
 from app.services.storage import StorageService
+
+
+ProgressCallback = Callable[[dict[str, object]], None]
 
 
 class DownloaderService:
 	def __init__(self, storage_service: StorageService | None = None) -> None:
 		self.storage_service = storage_service or StorageService()
 
-	def convert_from_url(self, source_url: str, audio_quality: int = 192) -> ConversionResult:
+	def fetch_video_metadata(self, source_url: str) -> VideoMetadata:
+		request = self._build_request(source_url=source_url, audio_quality=192)
+
+		ydl_options = {
+			"noplaylist": True,
+			"quiet": True,
+			"no_warnings": True,
+			"skip_download": True,
+		}
+
+		try:
+			with YoutubeDL(ydl_options) as youtube_dl:
+				info = youtube_dl.extract_info(str(request.source_url), download=False)
+		except YtDlpDownloadError as error:
+			raise DownloadProcessError(
+				"No se pudo verificar la URL en el servidor.",
+				details=str(error),
+			) from error
+		except Exception as error:
+			raise AudioExtractionError(
+				"No se pudieron obtener los metadatos del video.",
+				details=str(error),
+			) from error
+
+		video_id = self._resolve_video_id(info)
+		if not video_id:
+			raise DownloadProcessError("No se pudo determinar el identificador del video.")
+
+		return VideoMetadata(
+			source_url=request.source_url,
+			video_id=video_id,
+			title=self._resolve_title(info=info, fallback=Path(video_id)),
+			duration_seconds=self._resolve_duration_seconds(info),
+			thumbnail_url=self._resolve_thumbnail_url(info),
+		)
+
+	def convert_from_url(
+		self,
+		source_url: str,
+		audio_quality: int = 192,
+		progress_callback: ProgressCallback | None = None,
+	) -> ConversionResult:
 		request = self._build_request(source_url=source_url, audio_quality=audio_quality)
 		ffmpeg_location = self._resolve_ffmpeg_location()
 
 		job_id, job_directory = self.storage_service.create_job_directory()
 		output_template = str(job_directory / "%(title)s.%(ext)s")
+		self._emit_progress(
+			progress_callback,
+			{
+				"state": "starting",
+				"progress_percent": 2,
+				"message": "Inicializando descarga",
+			},
+		)
 
 		ydl_options = {
 			"format": "bestaudio/best",
@@ -45,6 +99,8 @@ class DownloaderService:
 					"preferredquality": str(request.audio_quality),
 				}
 			],
+			"progress_hooks": [self._build_progress_hook(progress_callback)],
+			"postprocessor_hooks": [self._build_postprocessor_hook(progress_callback)],
 		}
 
 		try:
@@ -52,12 +108,20 @@ class DownloaderService:
 				info = youtube_dl.extract_info(str(request.source_url), download=True)
 		except YtDlpDownloadError as error:
 			self.storage_service.cleanup_job_directory(job_directory)
+			self._emit_progress(
+				progress_callback,
+				{"state": "error", "progress_percent": 0, "message": "Error durante la descarga"},
+			)
 			raise DownloadProcessError(
 				"No se pudo descargar el recurso solicitado",
 				details=str(error),
 			) from error
 		except Exception as error:
 			self.storage_service.cleanup_job_directory(job_directory)
+			self._emit_progress(
+				progress_callback,
+				{"state": "error", "progress_percent": 0, "message": "Error durante la conversión"},
+			)
 			raise AudioExtractionError("No se pudo convertir el audio a MP3", details=str(error)) from error
 
 		generated_file = self.storage_service.find_generated_mp3(job_directory)
@@ -69,6 +133,10 @@ class DownloaderService:
 
 		content_type = mimetypes.guess_type(generated_file.name)[0] or "application/octet-stream"
 		output_format = generated_file.suffix.replace(".", "").lower() or "audio"
+		self._emit_progress(
+			progress_callback,
+			{"state": "ready", "progress_percent": 100, "message": "Conversión completada"},
+		)
 
 		return ConversionResult(
 			job_id=job_id,
@@ -136,3 +204,100 @@ class DownloaderService:
 			if isinstance(duration, float):
 				return int(duration)
 		return None
+
+	@staticmethod
+	def _resolve_video_id(info: object) -> str | None:
+		if isinstance(info, dict):
+			video_id = info.get("id")
+			if isinstance(video_id, str) and video_id.strip():
+				return video_id.strip()
+		return None
+
+	@staticmethod
+	def _resolve_thumbnail_url(info: object) -> str | None:
+		if not isinstance(info, dict):
+			return None
+
+		thumbnail = info.get("thumbnail")
+		if isinstance(thumbnail, str) and thumbnail.strip():
+			return thumbnail.strip()
+
+		thumbnails = info.get("thumbnails")
+		if isinstance(thumbnails, list):
+			for item in reversed(thumbnails):
+				if isinstance(item, dict):
+					url = item.get("url")
+					if isinstance(url, str) and url.strip():
+						return url.strip()
+		return None
+
+	def _build_progress_hook(self, callback: ProgressCallback | None) -> Callable[[dict[str, Any]], None]:
+		def hook(data: dict[str, Any]) -> None:
+			if callback is None:
+				return
+
+			status = str(data.get("status", ""))
+			if status == "downloading":
+				total_bytes = data.get("total_bytes") or data.get("total_bytes_estimate")
+				downloaded_bytes = data.get("downloaded_bytes")
+				percent = 10
+				if isinstance(total_bytes, (int, float)) and isinstance(downloaded_bytes, (int, float)) and total_bytes > 0:
+					percent = int((downloaded_bytes / total_bytes) * 80)
+				percent = max(5, min(percent, 90))
+
+				eta = data.get("eta")
+				eta_seconds = int(eta) if isinstance(eta, (int, float)) else None
+
+				self._emit_progress(
+					callback,
+					{
+						"state": "downloading",
+						"progress_percent": percent,
+						"message": "Descargando audio del video",
+						"eta_seconds": eta_seconds,
+					},
+				)
+			elif status == "finished":
+				self._emit_progress(
+					callback,
+					{
+						"state": "extracting",
+						"progress_percent": 92,
+						"message": "Extrayendo audio a MP3",
+						"eta_seconds": None,
+					},
+				)
+
+		return hook
+
+	def _build_postprocessor_hook(self, callback: ProgressCallback | None) -> Callable[[dict[str, Any]], None]:
+		def hook(data: dict[str, Any]) -> None:
+			if callback is None:
+				return
+
+			status = str(data.get("status", ""))
+			if status == "started":
+				self._emit_progress(
+					callback,
+					{
+						"state": "extracting",
+						"progress_percent": 94,
+						"message": "Iniciando transcodificación",
+					},
+				)
+			elif status == "finished":
+				self._emit_progress(
+					callback,
+					{
+						"state": "finalizing",
+						"progress_percent": 98,
+						"message": "Finalizando archivo MP3",
+					},
+				)
+
+		return hook
+
+	@staticmethod
+	def _emit_progress(callback: ProgressCallback | None, payload: dict[str, object]) -> None:
+		if callback is not None:
+			callback(payload)
