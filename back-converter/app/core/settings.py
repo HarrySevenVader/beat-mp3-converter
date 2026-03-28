@@ -37,7 +37,7 @@ def get_settings() -> Settings:
     cors_origins = _split_csv(os.getenv(cors_env_key))
     if not cors_origins:
         cors_origins = (
-            ["https://tu-frontend.vercel.app"]
+            ["https://beat.vercel.app"]
             if runtime_mode == "prod"
             else [
                 "http://localhost:3000",

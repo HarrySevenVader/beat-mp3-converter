@@ -13,7 +13,7 @@ services:
       - key: BACKEND_CORS_ALLOW_CREDENTIALS
         value: true
       - key: BACKEND_CORS_ORIGINS_PROD
-        value: https://tu-frontend.vercel.app
+        value: https://beat.vercel.app
       - key: BACKEND_JOBS_DB_PATH_PROD
         value: downloads/jobs.db
       - key: BACKEND_WORKER_MAX_WORKERS_PROD
