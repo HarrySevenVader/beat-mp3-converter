@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+import os
 from pathlib import Path
 from shutil import which
 from typing import Any, Callable
@@ -31,19 +32,15 @@ class DownloaderService:
 	def fetch_video_metadata(self, source_url: str) -> VideoMetadata:
 		request = self._build_request(source_url=source_url, audio_quality=192)
 
-		ydl_options = {
-			"noplaylist": True,
-			"quiet": True,
-			"no_warnings": True,
-			"skip_download": True,
-		}
+		ydl_options = self._build_ydl_options(skip_download=True)
 
 		try:
 			with YoutubeDL(ydl_options) as youtube_dl:
 				info = youtube_dl.extract_info(str(request.source_url), download=False)
 		except YtDlpDownloadError as error:
+			message = self._map_ytdlp_error_message(error)
 			raise DownloadProcessError(
-				"No se pudo verificar la URL en el servidor.",
+				message,
 				details=str(error),
 			) from error
 		except Exception as error:
@@ -84,24 +81,24 @@ class DownloaderService:
 			},
 		)
 
-		ydl_options = {
-			"format": "bestaudio/best",
-			"noplaylist": True,
-			"quiet": True,
-			"no_warnings": True,
-			"restrictfilenames": True,
-			"outtmpl": output_template,
-			"ffmpeg_location": ffmpeg_location,
-			"postprocessors": [
+		ydl_options = self._build_ydl_options(skip_download=False)
+		ydl_options.update(
+			{
+				"format": "bestaudio/best",
+				"restrictfilenames": True,
+				"outtmpl": output_template,
+				"ffmpeg_location": ffmpeg_location,
+				"postprocessors": [
 				{
 					"key": "FFmpegExtractAudio",
 					"preferredcodec": "mp3",
 					"preferredquality": str(request.audio_quality),
 				}
-			],
-			"progress_hooks": [self._build_progress_hook(progress_callback)],
-			"postprocessor_hooks": [self._build_postprocessor_hook(progress_callback)],
-		}
+				],
+				"progress_hooks": [self._build_progress_hook(progress_callback)],
+				"postprocessor_hooks": [self._build_postprocessor_hook(progress_callback)],
+			}
+		)
 
 		try:
 			with YoutubeDL(ydl_options) as youtube_dl:
@@ -112,8 +109,9 @@ class DownloaderService:
 				progress_callback,
 				{"state": "error", "progress_percent": 0, "message": "Error durante la descarga"},
 			)
+			message = self._map_ytdlp_error_message(error)
 			raise DownloadProcessError(
-				"No se pudo descargar el recurso solicitado",
+				message,
 				details=str(error),
 			) from error
 		except Exception as error:
@@ -301,3 +299,41 @@ class DownloaderService:
 	def _emit_progress(callback: ProgressCallback | None, payload: dict[str, object]) -> None:
 		if callback is not None:
 			callback(payload)
+
+	def _build_ydl_options(self, *, skip_download: bool) -> dict[str, object]:
+		options: dict[str, object] = {
+			"noplaylist": True,
+			"quiet": True,
+			"no_warnings": True,
+			"skip_download": skip_download,
+			"extractor_args": {
+				"youtube": {
+					"player_client": ["android", "web"],
+				}
+			},
+		}
+
+		cookie_file = os.getenv("BACKEND_YTDLP_COOKIES_FILE", "").strip()
+		if cookie_file and Path(cookie_file).is_file():
+			options["cookiefile"] = cookie_file
+
+		return options
+
+	@staticmethod
+	def _map_ytdlp_error_message(error: Exception) -> str:
+		error_text = str(error)
+		lower_text = error_text.lower()
+
+		if "sign in to confirm" in lower_text and "not a bot" in lower_text:
+			return (
+				"YouTube está pidiendo verificación anti-bot para este video. "
+				"Configura cookies en el backend o intenta con otro video."
+			)
+
+		if "this video is not available" in lower_text:
+			return "Este video no está disponible actualmente en YouTube."
+
+		if "private video" in lower_text:
+			return "El video es privado y no se puede convertir."
+
+		return "No se pudo verificar la URL en el servidor."
