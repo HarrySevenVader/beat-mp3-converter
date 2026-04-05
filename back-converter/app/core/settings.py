@@ -15,6 +15,7 @@ def _split_csv(value: str | None) -> list[str]:
 @dataclass(frozen=True)
 class Settings:
     app_name: str
+    runtime_mode: str
     cors_origins: list[str]
     cors_allow_credentials: bool
     jobs_db_path: Path
@@ -35,6 +36,7 @@ def get_settings() -> Settings:
 
     return Settings(
         app_name=os.getenv("BACKEND_APP_NAME", "Beat MP3 Converter API"),
+        runtime_mode=os.getenv("BACKEND_RUNTIME_MODE", "development"),
         cors_origins=cors_origins,
         cors_allow_credentials=os.getenv("BACKEND_CORS_ALLOW_CREDENTIALS", "true").lower() == "true",
         jobs_db_path=Path(os.getenv("BACKEND_JOBS_DB_PATH", "downloads/jobs.db")),

@@ -10,6 +10,8 @@ services:
     envVars:
       - key: BACKEND_APP_NAME
         value: Beat MP3 Converter API
+      - key: BACKEND_RUNTIME_MODE
+        value: production
       - key: BACKEND_CORS_ORIGINS
         value: https://beat-mp3-converter.vercel.app
       - key: BACKEND_CORS_ALLOW_CREDENTIALS
