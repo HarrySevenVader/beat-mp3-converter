@@ -19,6 +19,9 @@ class Settings:
     cors_allow_credentials: bool
     jobs_db_path: Path
     worker_max_workers: int
+    ytdlp_cookies_enabled: bool
+    ytdlp_cookies_browser: str | None
+    ytdlp_cookies_file: Path
 
 
 @lru_cache
@@ -36,4 +39,7 @@ def get_settings() -> Settings:
         cors_allow_credentials=os.getenv("BACKEND_CORS_ALLOW_CREDENTIALS", "true").lower() == "true",
         jobs_db_path=Path(os.getenv("BACKEND_JOBS_DB_PATH", "downloads/jobs.db")),
         worker_max_workers=max(1, int(os.getenv("BACKEND_WORKER_MAX_WORKERS", "2"))),
+        ytdlp_cookies_enabled=os.getenv("BACKEND_YTDLP_COOKIES_ENABLED", "false").lower() == "true",
+        ytdlp_cookies_browser=os.getenv("BACKEND_YTDLP_COOKIES_BROWSER", "chrome").strip() or None,
+        ytdlp_cookies_file=Path(os.getenv("BACKEND_YTDLP_COOKIES_FILE", "downloads/yt_cookies.txt")),
     )
