@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import mimetypes
-import os
 from pathlib import Path
 from shutil import which
 from typing import Any, Callable
+from urllib.parse import parse_qs, quote, urlparse
 
 from pydantic import ValidationError
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError as YtDlpDownloadError
 
+from app.core import get_settings
 from app.models import (
 	AudioExtractionError,
 	ConversionRequest,
@@ -28,17 +29,46 @@ ProgressCallback = Callable[[dict[str, object]], None]
 class DownloaderService:
 	def __init__(self, storage_service: StorageService | None = None) -> None:
 		self.storage_service = storage_service or StorageService()
+		self.settings = get_settings()
+
+	def _build_cookie_options(self) -> dict[str, Any]:
+		if not self.settings.ytdlp_cookies_enabled:
+			return {}
+
+		cookie_file = self.settings.ytdlp_cookies_file
+		cookie_file.parent.mkdir(parents=True, exist_ok=True)
+
+		cookie_options: dict[str, Any] = {
+			"cookiefile": str(cookie_file),
+		}
+
+		if self.settings.ytdlp_cookies_browser:
+			cookie_options["cookiesfrombrowser"] = (self.settings.ytdlp_cookies_browser,)
+
+		return cookie_options
 
 	def fetch_video_metadata(self, source_url: str) -> VideoMetadata:
 		request = self._build_request(source_url=source_url, audio_quality=192)
+		resolved_source_url = self._canonicalize_youtube_url(str(request.source_url))
 
-		ydl_options = self._build_ydl_options(skip_download=True)
+		ydl_options = {
+			"noplaylist": True,
+			"quiet": True,
+			"no_warnings": True,
+			"geo_bypass": True,
+			"skip_download": True,
+			"retries": 3,
+			"extractor_args": {
+				"youtube": {"player_client": ["android", "web"]},
+			},
+			**self._build_cookie_options(),
+		}
 
 		try:
 			with YoutubeDL(ydl_options) as youtube_dl:
-				info = youtube_dl.extract_info(str(request.source_url), download=False)
+				info = youtube_dl.extract_info(resolved_source_url, download=False)
 		except YtDlpDownloadError as error:
-			message = self._map_ytdlp_error_message(error)
+			message = self._map_ytdlp_error_message(str(error), verify_mode=True)
 			raise DownloadProcessError(
 				message,
 				details=str(error),
@@ -68,6 +98,7 @@ class DownloaderService:
 		progress_callback: ProgressCallback | None = None,
 	) -> ConversionResult:
 		request = self._build_request(source_url=source_url, audio_quality=audio_quality)
+		resolved_source_url = self._canonicalize_youtube_url(str(request.source_url))
 		ffmpeg_location = self._resolve_ffmpeg_location()
 
 		job_id, job_directory = self.storage_service.create_job_directory()
@@ -81,35 +112,41 @@ class DownloaderService:
 			},
 		)
 
-		ydl_options = self._build_ydl_options(skip_download=False)
-		ydl_options.update(
-			{
-				"format": "bestaudio/best",
-				"restrictfilenames": True,
-				"outtmpl": output_template,
-				"ffmpeg_location": ffmpeg_location,
-				"postprocessors": [
+		ydl_options = {
+			"format": "bestaudio/best",
+			"noplaylist": True,
+			"quiet": True,
+			"no_warnings": True,
+			"geo_bypass": True,
+			"retries": 3,
+			"restrictfilenames": True,
+			"outtmpl": output_template,
+			"ffmpeg_location": ffmpeg_location,
+			"extractor_args": {
+				"youtube": {"player_client": ["android", "web"]},
+			},
+			**self._build_cookie_options(),
+			"postprocessors": [
 				{
 					"key": "FFmpegExtractAudio",
 					"preferredcodec": "mp3",
 					"preferredquality": str(request.audio_quality),
 				}
-				],
-				"progress_hooks": [self._build_progress_hook(progress_callback)],
-				"postprocessor_hooks": [self._build_postprocessor_hook(progress_callback)],
-			}
-		)
+			],
+			"progress_hooks": [self._build_progress_hook(progress_callback)],
+			"postprocessor_hooks": [self._build_postprocessor_hook(progress_callback)],
+		}
 
 		try:
 			with YoutubeDL(ydl_options) as youtube_dl:
-				info = youtube_dl.extract_info(str(request.source_url), download=True)
+				info = youtube_dl.extract_info(resolved_source_url, download=True)
 		except YtDlpDownloadError as error:
 			self.storage_service.cleanup_job_directory(job_directory)
 			self._emit_progress(
 				progress_callback,
 				{"state": "error", "progress_percent": 0, "message": "Error durante la descarga"},
 			)
-			message = self._map_ytdlp_error_message(error)
+			message = self._map_ytdlp_error_message(str(error), verify_mode=False)
 			raise DownloadProcessError(
 				message,
 				details=str(error),
@@ -184,6 +221,45 @@ class DownloaderService:
 		if "URL" in error_text or "url" in error_text:
 			return "El formato de la URL no es válido."
 		return "La URL de origen no es válida."
+
+	@staticmethod
+	def _canonicalize_youtube_url(source_url: str) -> str:
+		parsed = urlparse(source_url)
+		host = parsed.netloc.lower()
+		path_segments = [segment for segment in parsed.path.split("/") if segment]
+		query = parse_qs(parsed.query)
+
+		video_id = ""
+		if "youtu.be" in host and path_segments:
+			video_id = path_segments[0]
+		elif path_segments and path_segments[0] in {"shorts", "embed", "live"} and len(path_segments) > 1:
+			video_id = path_segments[1]
+		else:
+			video_id = (query.get("v") or [""])[0]
+
+		video_id = video_id.strip()
+		if not video_id:
+			return source_url
+
+		return f"https://www.youtube.com/watch?v={quote(video_id)}"
+
+	@staticmethod
+	def _map_ytdlp_error_message(error_text: str, *, verify_mode: bool) -> str:
+		normalized = error_text.lower()
+
+		if "private video" in normalized or "is private" in normalized:
+			return "El video es privado y no se puede procesar."
+		if "video unavailable" in normalized or "this video is unavailable" in normalized:
+			return "El video no está disponible en este momento."
+		if "sign in to confirm you're not a bot" in normalized or "confirm you're not a bot" in normalized:
+			return (
+				"YouTube bloqueó temporalmente la consulta del servidor. "
+				"Habilita cookies de navegador en el backend o intenta con otra URL pública."
+			)
+
+		if verify_mode:
+			return "No se pudo verificar la URL en el servidor."
+		return "No se pudo descargar el recurso solicitado."
 
 	@staticmethod
 	def _resolve_title(info: object, fallback: Path) -> str:
@@ -299,41 +375,3 @@ class DownloaderService:
 	def _emit_progress(callback: ProgressCallback | None, payload: dict[str, object]) -> None:
 		if callback is not None:
 			callback(payload)
-
-	def _build_ydl_options(self, *, skip_download: bool) -> dict[str, object]:
-		options: dict[str, object] = {
-			"noplaylist": True,
-			"quiet": True,
-			"no_warnings": True,
-			"skip_download": skip_download,
-			"extractor_args": {
-				"youtube": {
-					"player_client": ["android", "web"],
-				}
-			},
-		}
-
-		cookie_file = os.getenv("BACKEND_YTDLP_COOKIES_FILE", "").strip()
-		if cookie_file and Path(cookie_file).is_file():
-			options["cookiefile"] = cookie_file
-
-		return options
-
-	@staticmethod
-	def _map_ytdlp_error_message(error: Exception) -> str:
-		error_text = str(error)
-		lower_text = error_text.lower()
-
-		if "sign in to confirm" in lower_text and "not a bot" in lower_text:
-			return (
-				"YouTube está pidiendo verificación anti-bot para este video. "
-				"Configura cookies en el backend o intenta con otro video."
-			)
-
-		if "this video is not available" in lower_text:
-			return "Este video no está disponible actualmente en YouTube."
-
-		if "private video" in lower_text:
-			return "El video es privado y no se puede convertir."
-
-		return "No se pudo verificar la URL en el servidor."
