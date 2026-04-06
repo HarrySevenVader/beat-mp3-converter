@@ -36,7 +36,14 @@ class DownloaderService:
 			return {}
 
 		cookie_file = self.settings.ytdlp_cookies_file
-		cookie_file.parent.mkdir(parents=True, exist_ok=True)
+		if not cookie_file.exists():
+			raise DownloadProcessError(
+				"No se encontró el archivo de cookies configurado en el servidor.",
+				details=(
+					f"Ruta configurada: {cookie_file}. "
+					"Verifica el Secret File en Render y la variable BACKEND_YTDLP_COOKIES_FILE."
+				),
+			)
 
 		cookie_options: dict[str, Any] = {
 			"cookiefile": str(cookie_file),
