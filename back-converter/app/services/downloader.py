@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
-from shutil import which
+from shutil import copyfile, which
+from tempfile import gettempdir
 from typing import Any, Callable
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -45,14 +46,23 @@ class DownloaderService:
 				),
 			)
 
+		runtime_cookie_file = self._prepare_runtime_cookie_file(cookie_file)
+
 		cookie_options: dict[str, Any] = {
-			"cookiefile": str(cookie_file),
+			"cookiefile": str(runtime_cookie_file),
 		}
 
 		if self.settings.ytdlp_cookies_browser:
 			cookie_options["cookiesfrombrowser"] = (self.settings.ytdlp_cookies_browser,)
 
 		return cookie_options
+
+	@staticmethod
+	def _prepare_runtime_cookie_file(source_cookie_file: Path) -> Path:
+		# Render secret files are mounted read-only, but yt-dlp may update its cookie jar.
+		runtime_cookie_file = Path(gettempdir()) / "youtube_cookies_runtime.txt"
+		copyfile(source_cookie_file, runtime_cookie_file)
+		return runtime_cookie_file
 
 	def fetch_video_metadata(self, source_url: str) -> VideoMetadata:
 		request = self._build_request(source_url=source_url, audio_quality=192)
