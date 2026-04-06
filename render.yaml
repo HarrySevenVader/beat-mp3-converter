@@ -21,6 +21,8 @@ services:
       - key: BACKEND_WORKER_MAX_WORKERS
         value: "2"
       - key: BACKEND_YTDLP_COOKIES_ENABLED
-        value: "false"
+        value: "true"
+      - key: BACKEND_YTDLP_COOKIES_BROWSER
+        value: ""
       - key: BACKEND_YTDLP_COOKIES_FILE
         value: /etc/secrets/youtube_cookies.txt

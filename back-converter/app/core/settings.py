@@ -42,6 +42,6 @@ def get_settings() -> Settings:
         jobs_db_path=Path(os.getenv("BACKEND_JOBS_DB_PATH", "downloads/jobs.db")),
         worker_max_workers=max(1, int(os.getenv("BACKEND_WORKER_MAX_WORKERS", "2"))),
         ytdlp_cookies_enabled=os.getenv("BACKEND_YTDLP_COOKIES_ENABLED", "false").lower() == "true",
-        ytdlp_cookies_browser=os.getenv("BACKEND_YTDLP_COOKIES_BROWSER", "chrome").strip() or None,
+        ytdlp_cookies_browser=os.getenv("BACKEND_YTDLP_COOKIES_BROWSER", "").strip() or None,
         ytdlp_cookies_file=Path(os.getenv("BACKEND_YTDLP_COOKIES_FILE", "downloads/yt_cookies.txt")),
     )
